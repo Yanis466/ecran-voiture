@@ -43,7 +43,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 /* Compteur */
 .speed{min-height:0;display:flex;align-items:center;justify-content:center}
 .speed svg{width:100%;height:100%;max-height:100%}
-#spd{font-family:var(--num);font-weight:600;font-size:200px;fill:var(--fg);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+#spd{font-family:var(--num);font-weight:600;font-size:158px;fill:var(--fg);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 #spd.over{fill:var(--red)}
 .unit{font-family:var(--txt);font-size:15px;letter-spacing:.32em;fill:var(--mut);font-weight:500}
 .lab{font-family:var(--num);font-size:15px;font-weight:500;fill:var(--dim)}
@@ -86,31 +86,31 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
 .wlink{padding:12px;color:var(--mut);font-size:15px}
 
 @media (orientation:portrait){
-  html,body{overflow:hidden;height:100dvh}
-  #app{height:100dvh;grid-template-columns:1fr;grid-template-rows:auto auto minmax(0,1fr);row-gap:4px;
-    padding:max(10px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))}
-  .bar{flex-wrap:wrap;row-gap:4px}
-  .speed{align-items:flex-start}
-  .speed svg{height:auto;width:100%;max-height:none}
-  .side{padding:0;gap:14px;justify-content:space-between}
-  .sign{width:clamp(84px,23vw,112px);border-width:clamp(8px,2.3vw,12px);font-size:clamp(38px,11vw,60px)}
-  .sign.three{font-size:clamp(30px,9vw,50px)}
-  .music{padding-top:clamp(14px,2.4vh,24px);gap:clamp(14px,2.6vh,24px)}
-  .mrow{flex-direction:column;align-items:stretch;gap:clamp(14px,2.4vh,22px)}
-  .cover{width:min(66vw,23vh);align-self:center;border-radius:14px}
-  .meta{text-align:center}
-  .title{font-size:clamp(26px,4.2vh,36px);-webkit-line-clamp:1}
-  .artist{font-size:clamp(15px,2.2vh,19px)}
-  .ctl{gap:clamp(24px,9vw,52px)}
-  .ctl button{width:60px;height:60px}
-  .ctl .main{width:78px;height:78px}
-}
-@media (orientation:portrait) and (max-height:760px){
-  .cover{width:min(50vw,17vh)}
-  .music{gap:10px;padding-top:10px}
-  .ctl button{width:52px;height:52px}
-  .ctl .main{width:64px;height:64px}
-  .title{font-size:24px}
+  :root{--top:max(env(safe-area-inset-top),12px);--bot:max(env(safe-area-inset-bottom),16px)}
+  html,body{overflow:hidden}
+  #app{display:flex;flex-direction:column;height:100dvh;padding:var(--top) 22px var(--bot) 22px}
+  .bar{flex:none;min-height:26px}
+  #clock{display:none}
+  .src{margin-left:0}
+  .speed{flex:none;display:block;margin-top:4px}
+  .speed svg{display:block;width:100%;height:auto}
+  .side{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;padding:6px 0 0}
+  .limit{gap:18px}
+  .sign{width:84px;border-width:9px;font-size:38px}
+  .sign.three{font-size:31px}
+  .sign.none{font-size:30px}
+  .road #road{font-size:21px}
+  .music{flex:none;padding-top:14px;gap:14px;align-items:stretch}
+  .mrow{flex-direction:column;align-items:center;gap:14px}
+  .cover{width:var(--cv);height:var(--cv);aspect-ratio:auto;border-radius:14px}
+  .meta{text-align:center;width:100%}
+  .now{margin-bottom:6px}
+  .title{font-size:34px;-webkit-line-clamp:1}
+  .artist{font-size:18px;margin-top:4px}
+  .ctl{gap:44px}
+  .ctl button{width:58px;height:58px}
+  .ctl .main{width:74px;height:74px}
+  #app{--cv:clamp(88px,calc(100dvh - var(--top) - var(--bot) - 352px - 68vw),66vw)}
 }
 </style>
 </head>
@@ -125,10 +125,10 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   </header>
 
   <section class="speed">
-    <svg id="g" viewBox="0 0 500 340" aria-label="Compteur de vitesse">
+    <svg id="g" viewBox="0 0 500 330" aria-label="Compteur de vitesse">
       <g id="ticks"></g>
       <path id="mark" d="M-7 -6L7 -6L0 9Z" fill="#e5392f" opacity="0"/>
-      <text id="spd" x="250" y="262" text-anchor="middle">0</text>
+      <text id="spd" x="250" y="258" text-anchor="middle">0</text>
       <text class="unit" x="250" y="300" text-anchor="middle">KM/H</text>
     </svg>
   </section>
@@ -136,7 +136,7 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   <aside class="side">
     <div class="limit">
       <div class="sign none" id="sign"><span id="limVal">–</span></div>
-      <div class="road"><span class="k">Limitation</span><span id="road">Route inconnue</span></div>
+      <div class="road"><span class="k">Limitation</span><span id="road">Recherche de la limite…</span></div>
     </div>
     <div class="music">
       <div class="mrow">
@@ -230,7 +230,7 @@ function setLimit(value, roadName){
   $('limVal').textContent = value || '–';
   sign.classList.toggle('none', !value);
   sign.classList.toggle('three', !!value && value >= 100);
-  $('road').textContent = roadName || (value ? 'Route' : 'Route inconnue');
+  $('road').textContent = roadName || (value ? 'Route' : 'Aucune limite trouvée');
   const mark = $('mark');
   if (value){
     const a = angleFor(value), [x, y] = polar(a, CFG.rOut + 12);
@@ -245,7 +245,8 @@ function distanceM(a, b){
   return 2 * R_EARTH * Math.asin(Math.sqrt(h));
 }
 const lim = {lastPos:null, lastTime:0, busy:false};
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+const OVERPASS = ['https://overpass.osm.ch/api/interpreter', 'https://overpass.openstreetmap.fr/api/interpreter'];
+const OVERPASS_SLOW = 'https://overpass-api.de/api/interpreter';
 const HW_DEFAULT = {motorway:120, motorway_link:80, living_street:20, residential:50};
 function distToWayM(p, geom){
   const k = Math.PI / 180, cx = Math.cos(p.lat * k), best = {d:Infinity};
@@ -258,18 +259,16 @@ function distToWayM(p, geom){
   }
   return best.d;
 }
+function fetchOverpass(url, query, ms){
+  const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), ms);
+  return fetch(url, {method:'POST', body:'data=' + encodeURIComponent(query), signal:ctl.signal})
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json() })
+    .finally(() => clearTimeout(to));
+}
 async function overpass(query){
-  let lastErr;
-  for (const url of OVERPASS){
-    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 7000);
-    try{
-      const res = await fetch(url, {method:'POST', body:'data=' + encodeURIComponent(query), signal:ctl.signal});
-      clearTimeout(to);
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return await res.json();
-    }catch(e){ clearTimeout(to); lastErr = e }
-  }
-  throw lastErr;
+  /* Les deux serveurs rapides (suisse et français) partent en même temps ; le plus lent officiel sert de secours. */
+  try{ return await Promise.any(OVERPASS.map(u => fetchOverpass(u, query, 8000))) }
+  catch(e){ return await fetchOverpass(OVERPASS_SLOW, query, 20000) }
 }
 async function lookupLimit(lat, lon, acc){
   const now = Date.now(), here = {lat, lon};
@@ -277,8 +276,9 @@ async function lookupLimit(lat, lon, acc){
   if (lim.lastPos && distanceM(here, lim.lastPos) < 30 && now - lim.lastTime < 25000) return;
   if (now - lim.lastTime < 4000) return;
   lim.busy = true; lim.lastPos = here; lim.lastTime = now;
+  if (!state.limit) $('road').textContent = 'Recherche de la limite…';
   const r = Math.round(Math.min(60, Math.max(25, (acc || 0) * 1.2)));
-  const query = '[out:json][timeout:8];way(around:' + r + ',' + lat + ',' + lon + ')["highway"]["highway"!~"footway|path|cycleway|steps|pedestrian|track|bridleway|corridor|proposed|construction|platform"];out tags geom 12;';
+  const query = '[out:json][timeout:8];way(around:' + r + ',' + lat + ',' + lon + ')["highway"]["highway"!~"footway|path|cycleway|steps|pedestrian|track|bridleway|corridor|proposed|construction|platform|service"];out tags geom 12;';
   try{
     const data = await overpass(query);
     const ways = (data.elements || []).filter(w => w.geometry && w.geometry.length > 1)
@@ -292,7 +292,7 @@ async function lookupLimit(lat, lon, acc){
       if (!v) v = HW_DEFAULT[t.highway] || null;
       setLimit(v, t.name || t.ref);
     }
-  }catch(e){ if (!state.limit) $('road').textContent = 'Limite indisponible (réseau)' }
+  }catch(e){ if (!state.limit) $('road').textContent = 'Limite indisponible' }
   finally{ lim.busy = false }
 }
 
