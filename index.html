@@ -222,25 +222,60 @@ function distanceM(a, b){
   const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2;
   return 2 * R_EARTH * Math.asin(Math.sqrt(h));
 }
-const lim = {lastPos:null, lastTime:0};
-async function lookupLimit(lat, lon){
+const lim = {lastPos:null, lastTime:0, busy:false};
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+const HW_DEFAULT = {motorway:120, motorway_link:80, living_street:20, residential:50};
+function distToWayM(p, geom){
+  const k = Math.PI / 180, cx = Math.cos(p.lat * k), best = {d:Infinity};
+  const xy = g => [(g.lon - p.lon) * k * cx * R_EARTH, (g.lat - p.lat) * k * R_EARTH];
+  for (let i = 0; i < geom.length - 1; i++){
+    const [x1, y1] = xy(geom[i]), [x2, y2] = xy(geom[i + 1]);
+    const dx = x2 - x1, dy = y2 - y1, l2 = dx * dx + dy * dy;
+    const t = l2 ? Math.max(0, Math.min(1, -(x1 * dx + y1 * dy) / l2)) : 0;
+    best.d = Math.min(best.d, Math.hypot(x1 + t * dx, y1 + t * dy));
+  }
+  return best.d;
+}
+async function overpass(query){
+  let lastErr;
+  for (const url of OVERPASS){
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 7000);
+    try{
+      const res = await fetch(url, {method:'POST', body:'data=' + encodeURIComponent(query), signal:ctl.signal});
+      clearTimeout(to);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    }catch(e){ clearTimeout(to); lastErr = e }
+  }
+  throw lastErr;
+}
+async function lookupLimit(lat, lon, acc){
   const now = Date.now(), here = {lat, lon};
-  if (lim.lastPos && distanceM(here, lim.lastPos) < 35 && now - lim.lastTime < 20000) return;
+  if (lim.busy) return;
+  if (lim.lastPos && distanceM(here, lim.lastPos) < 30 && now - lim.lastTime < 25000) return;
   if (now - lim.lastTime < 4000) return;
-  lim.lastPos = here; lim.lastTime = now;
-  const query = '[out:json][timeout:6];way(around:22,' + lat + ',' + lon + ')["highway"];out tags center 8;';
+  lim.busy = true; lim.lastPos = here; lim.lastTime = now;
+  const r = Math.round(Math.min(60, Math.max(25, (acc || 0) * 1.2)));
+  const query = '[out:json][timeout:8];way(around:' + r + ',' + lat + ',' + lon + ')["highway"]["highway"!~"footway|path|cycleway|steps|pedestrian|track|bridleway|corridor|proposed|construction|platform"];out tags geom 12;';
   try{
-    const res = await fetch('https://overpass-api.de/api/interpreter', {method:'POST', body:'data=' + encodeURIComponent(query)});
-    const data = await res.json();
-    const ways = (data.elements || []).filter(w => w.center)
-      .map(w => ({w, d: distanceM(here, {lat:w.center.lat, lon:w.center.lon})})).sort((a, b) => a.d - b.d);
-    const withLimit = ways.find(o => parseMaxspeed(o.w.tags.maxspeed)), best = withLimit || ways[0];
-    if (best) setLimit(parseMaxspeed(best.w.tags.maxspeed), best.w.tags.name || best.w.tags.ref); else setLimit(null);
-  }catch(e){ $('road').textContent = 'Limite indisponible (réseau)' }
+    const data = await overpass(query);
+    const ways = (data.elements || []).filter(w => w.geometry && w.geometry.length > 1)
+      .map(w => ({w, d: distToWayM(here, w.geometry)})).sort((a, b) => a.d - b.d);
+    const best = ways[0];
+    if (!best){ setLimit(null); }
+    else {
+      const t = best.w.tags;
+      let v = parseMaxspeed(t.maxspeed);
+      if (!v && ways[1] && ways[1].d - best.d < 4 && t.name && ways[1].w.tags.name === t.name) v = parseMaxspeed(ways[1].w.tags.maxspeed);
+      if (!v) v = HW_DEFAULT[t.highway] || null;
+      setLimit(v, t.name || t.ref);
+    }
+  }catch(e){ if (!state.limit) $('road').textContent = 'Limite indisponible (réseau)' }
+  finally{ lim.busy = false }
 }
 
 /* ================= Source : GPS réel ================= */
-let watchId = null, wakeLock = null, lastFix = null;
+let watchId = null, wakeLock = null, lastFix = null, gpsWatchdog = null, gpsRetry = null, speedEma = 0;
 function notify(text, ms){ const n = $('note'); n.textContent = text; clearTimeout(notify.t); notify.t = setTimeout(() => { n.textContent = '' }, ms || 7000) }
 function setSource(text, ok){ $('srcTxt').textContent = text; $('dot').className = ok ? 'ok' : '' }
 async function keepAwake(){ try{ wakeLock = await navigator.wakeLock.request('screen') }catch(e){} }
@@ -249,33 +284,54 @@ function speedFromFix(fix){
   if (c.speed != null && c.speed >= 0) return c.speed * 3.6;
   if (lastFix){
     const dt = (fix.timestamp - lastFix.timestamp) / 1000;
-    if (dt > 0) return distanceM({lat:lastFix.coords.latitude, lon:lastFix.coords.longitude}, {lat:c.latitude, lon:c.longitude}) / dt * 3.6;
+    if (dt >= 0.5 && dt < 10){
+      const d = distanceM({lat:lastFix.coords.latitude, lon:lastFix.coords.longitude}, {lat:c.latitude, lon:c.longitude});
+      if (d < Math.max(5, c.accuracy * 0.6)) return 0;
+      return d / dt * 3.6;
+    }
   }
   return null;
 }
 function onFix(fix){
-  setSource('GPS actif · ±' + Math.round(fix.coords.accuracy) + ' m', true);
+  clearTimeout(gpsRetry);
+  const acc = Math.round(fix.coords.accuracy);
+  const weak = acc > 100;
+  setSource((weak ? 'GPS faible' : 'GPS actif') + ' · ±' + acc + ' m', !weak);
+  if (!weak) $('note').textContent = '';
   const v = speedFromFix(fix);
-  state.target = v == null || v < 2 ? 0 : v;
-  lastFix = fix;
-  lookupLimit(fix.coords.latitude, fix.coords.longitude);
+  if (v == null){ lastFix = fix; lastFix.rcv = Date.now(); lookupLimit(fix.coords.latitude, fix.coords.longitude, fix.coords.accuracy); return }
+  speedEma = v < 3 ? 0 : (speedEma ? speedEma * 0.35 + v * 0.65 : v);
+  state.target = speedEma;
+  lastFix = fix; lastFix.rcv = Date.now();
+  lookupLimit(fix.coords.latitude, fix.coords.longitude, fix.coords.accuracy);
 }
+function restartGps(){ if (state.mode === 'live') startLive(true) }
 function onFixError(e){
-  const causes = {1:'Localisation refusée', 2:'Position indisponible', 3:'GPS trop long à répondre'};
+  const causes = {1:'Localisation refusée', 2:'Position indisponible', 3:'Recherche GPS…'};
   setSource(causes[e.code] || 'GPS indisponible', false);
-  notify(e.code === 1
-    ? 'Autorise la localisation : Réglages iPhone > Confidentialité et sécurité > Service de localisation > ton navigateur > Lors de l\u2019utilisation. Puis touche l\u2019état GPS en haut.'
-    : 'Va à l\u2019extérieur ou touche l\u2019état GPS en haut pour réessayer.', 20000);
+  if (e.code === 1){
+    notify('Autorise la localisation : Réglages iPhone > Confidentialité et sécurité > Service de localisation > ton navigateur > Lors de l’utilisation. Puis touche l’état GPS en haut.', 20000);
+    try{ navigator.permissions.query({name:'geolocation'}).then(p => { p.onchange = () => { if (p.state !== 'denied') restartGps() } }) }catch(_){}
+  } else {
+    notify('Signal GPS faible : place l’iPhone près du pare-brise. Nouvelle tentative automatique…', 8000);
+    clearTimeout(gpsRetry); gpsRetry = setTimeout(restartGps, 3000);
+  }
 }
-function startLive(){
+function startLive(quiet){
   stopSources();
-  state.mode = 'live'; setLimit(null); state.target = 0;
+  state.mode = 'live'; if (!quiet){ setLimit(null); state.target = 0; speedEma = 0; lastFix = null }
   renderTrack();
-  if (!navigator.geolocation){ setSource('GPS indisponible', false); return }
+  if (!navigator.geolocation){ setSource('GPS indisponible', false); notify('Ce navigateur n’a pas de GPS. Ouvre la page dans Safari.', 15000); return }
   setSource('GPS : recherche…', false); keepAwake();
-  watchId = navigator.geolocation.watchPosition(onFix, onFixError, {enableHighAccuracy:true, maximumAge:1000, timeout:15000});
+  watchId = navigator.geolocation.watchPosition(onFix, onFixError, {enableHighAccuracy:true, maximumAge:0, timeout:20000});
+  clearInterval(gpsWatchdog);
+  gpsWatchdog = setInterval(() => {
+    if (state.mode !== 'live' || !lastFix) return;
+    if (Date.now() - lastFix.rcv > 10000){ setSource('Signal GPS perdu', false); state.target = 0; speedEma = 0; restartGps() }
+  }, 5000);
   if (store.get('sp_token')) startSpotifyPolling();
 }
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.mode === 'live'){ keepAwake(); restartGps() } });
 
 /* ================= Source : démo ================= */
 const DEMO_PHASES = [
@@ -312,7 +368,7 @@ function startDemo(){
 function stopSources(){
   clearInterval(demoTimer); demoTimer = null;
   if (watchId != null) navigator.geolocation.clearWatch(watchId); watchId = null;
-  clearInterval(pollTimer); pollTimer = null;
+  clearInterval(pollTimer); pollTimer = null; clearInterval(gpsWatchdog); clearTimeout(gpsRetry);
 }
 
 /* ================= Musique : état et affichage ================= */
@@ -457,7 +513,7 @@ function tickClock(){ $('clock').textContent = new Date().toLocaleTimeString('fr
 function skipSpotify(){ try{ sessionStorage.setItem('sp_skip', '1') }catch(e){} hideWelcome(); startLive() }
 function hasSkipped(){ try{ return sessionStorage.getItem('sp_skip') === '1' }catch(e){ return false } }
 function bindUi(){
-  $('srcTxt').parentElement.onclick = () => { if (state.mode === 'live') startLive() };
+  $('srcTxt').parentElement.onclick = () => { if (state.mode === 'live'){ startLive() } };
   $('wConnect').onclick = spotifyLogin; $('wSkip').onclick = skipSpotify;
   $('meta').onclick = $('cover').onclick = () => { if (!store.get('sp_token')) spotifyLogin() };
   $('play').onclick = togglePlay; $('next').onclick = () => skip(1); $('prev').onclick = () => skip(-1);
