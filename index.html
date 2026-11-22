@@ -488,10 +488,34 @@ async function accessToken(){
     await requestToken({grant_type:'refresh_token', refresh_token:store.get('sp_refresh'), client_id:store.get('sp_cid')});
   return store.get('sp_token');
 }
-async function playerCall(path, method){
+async function rawPlayer(path, method, body){
   const token = await accessToken(); if (!token) return null;
-  const res = await fetch('https://api.spotify.com/v1/me/player' + path, {method:method || 'GET', headers:{Authorization:'Bearer ' + token}});
+  const opt = {method:method || 'GET', headers:{Authorization:'Bearer ' + token}};
+  if (body){ opt.headers['Content-Type'] = 'application/json'; opt.body = JSON.stringify(body) }
+  return fetch('https://api.spotify.com/v1/me/player' + path, opt);
+}
+/* Erreur 404 = aucun appareil Spotify actif : on réveille celui de l'iPhone puis on relance la commande. */
+async function wakeDevice(){
+  const r = await rawPlayer('/devices'); if (!r || !r.ok) return false;
+  const list = (await r.json()).devices || [];
+  if (!list.length){
+    notify('Aucun appareil Spotify trouvé. Ouvre l\u2019app Spotify sur ton iPhone, lance un morceau 2 secondes, puis reviens ici.', 15000);
+    return false;
+  }
+  const d = list.find(x => x.is_active) || list.find(x => x.type === 'Smartphone') || list[0];
+  const t = await rawPlayer('', 'PUT', {device_ids:[d.id], play:true});
+  return !!t && t.ok;
+}
+async function playerCall(path, method, body){
+  const res = await rawPlayer(path, method, body); if (!res) return null;
   if (res.status === 204 || res.status === 202) return {};
+  if (res.status === 404 && method && method !== 'GET'){
+    if (!(await wakeDevice())) return null;
+    if (path === '/pause') return {};
+    await new Promise(r => setTimeout(r, 900));
+    const again = await rawPlayer(path, method, body);
+    return again && again.ok ? {} : null;
+  }
   if (!res.ok){ notify('Spotify : erreur ' + res.status + (res.status === 403 ? ' (Premium requis pour les commandes)' : '')); return null }
   return method && method !== 'GET' ? {} : res.json();
 }
