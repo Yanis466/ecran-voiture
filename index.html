@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Écran de voiture</title>
+<style>
+:root{--bg:#05070d;--card:#0d1220;--line:#1b2440;--txt:#eef2ff;--mut:#7d88ab;--acc:#2f7bff;--ok:#2fe6a6;--warn:#ffb020;--bad:#ff3b5c}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--txt);font-family:-apple-system,"SF Pro Display",system-ui,sans-serif;overflow:hidden;user-select:none}
+body{padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
+#app{height:100%;display:grid;grid-template-columns:1fr 1.25fr 1fr;grid-template-rows:auto 1fr;gap:10px;transition:transform .4s}
+#app.hud{transform:scaleX(-1)}
+.top{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;font-size:14px;color:var(--mut)}
+.top b{color:var(--txt);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.pill{display:inline-flex;gap:6px;align-items:center;padding:5px 11px;border:1px solid var(--line);border-radius:99px;background:var(--card);font-size:12px;color:var(--mut)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--warn);box-shadow:0 0 8px currentColor}
+.dot.ok{background:var(--ok)}
+.card{background:linear-gradient(160deg,#0f1628,#090d18);border:1px solid var(--line);border-radius:22px;padding:14px;position:relative;overflow:hidden;min-height:0}
+.col{display:flex;flex-direction:column;gap:10px;min-height:0}
+/* Gauge */
+.gauge{display:flex;align-items:center;justify-content:center}
+.gauge svg{width:100%;height:100%;max-height:100%}
+.spd{font-size:clamp(64px,19vh,150px);font-weight:700;letter-spacing:-.04em;font-variant-numeric:tabular-nums;fill:var(--txt)}
+.unit{fill:var(--mut);font-size:15px;letter-spacing:.2em}
+#arc{transition:stroke .3s}
+/* Limit sign */
+.limit{display:flex;align-items:center;gap:14px}
+.sign{width:clamp(70px,22vh,110px);aspect-ratio:1;border-radius:50%;background:#fff;border:clamp(8px,2.6vh,13px) solid var(--bad);display:flex;align-items:center;justify-content:center;color:#111;font-weight:800;font-size:clamp(24px,7.5vh,42px);flex:none;transition:transform .3s,box-shadow .3s}
+.sign.none{background:#161d33;border-color:#2a3558;color:var(--mut);font-size:22px}
+.sign.over{animation:pulse .7s infinite alternate}
+@keyframes pulse{from{box-shadow:0 0 0 0 #ff3b5c88;transform:scale(1)}to{box-shadow:0 0 0 18px #ff3b5c00;transform:scale(1.07)}}
+.lbl{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
+.val{font-size:clamp(18px,4.6vh,26px);font-weight:600;margin-top:3px}
+.status{font-size:13px;margin-top:4px}
+canvas{width:100%;height:100%;display:block}
+.map{flex:1;padding:0}
+.map .lbl{position:absolute;left:14px;top:12px;z-index:2}
+.navbtns{position:absolute;right:10px;bottom:10px;display:flex;gap:6px;z-index:2}
+.navbtns a{font-size:12px;color:var(--txt);text-decoration:none;padding:6px 10px;border-radius:12px;background:#1a2547;border:1px solid var(--line)}
+/* Spotify */
+.sp{display:flex;flex-direction:column;justify-content:space-between;flex:1}
+.cover{width:100%;max-width:min(100%,32vh);aspect-ratio:1;border-radius:18px;background:#1a2547 center/cover;margin:4px auto 0;box-shadow:0 12px 40px #0009;transition:transform .5s}
+.cover.play{animation:float 5s ease-in-out infinite}
+@keyframes float{50%{transform:translateY(-4px) scale(1.015)}}
+.tt{font-size:clamp(16px,4vh,22px);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ar{color:var(--mut);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar{height:5px;border-radius:9px;background:#1b2440;margin:10px 0 4px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--acc),var(--ok));border-radius:9px}
+.ctl{display:flex;justify-content:center;align-items:center;gap:22px}
+.ctl button{background:none;border:0;color:var(--txt);font-size:26px;width:46px;height:46px;border-radius:50%}
+.ctl button.main{background:var(--txt);color:#05070d;font-size:22px;width:56px;height:56px}
+.ctl button:active{transform:scale(.9)}
+/* Settings */
+#gear{position:fixed;right:max(10px,env(safe-area-inset-right));bottom:max(8px,env(safe-area-inset-bottom));z-index:9;background:#0d1220cc;color:var(--mut);border:1px solid var(--line);border-radius:99px;padding:6px 12px;font-size:12px}
+#panel{position:fixed;inset:0;background:#05070dee;backdrop-filter:blur(16px);z-index:10;display:none;align-items:center;justify-content:center;padding:20px}
+#panel.on{display:flex}
+#panel .box{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:20px;width:min(560px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px}
+#panel h2{font-size:20px}
+#panel p,#panel small{color:var(--mut);font-size:13px;line-height:1.45}
+#panel code{background:#1a2547;padding:2px 6px;border-radius:6px;color:var(--txt);word-break:break-all}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.btn{background:#1a2547;color:var(--txt);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:14px}
+.btn.on{background:var(--acc);border-color:var(--acc)}
+input{background:#0a0f1d;border:1px solid var(--line);color:var(--txt);border-radius:12px;padding:10px 12px;font-size:14px;width:100%}
+@media (orientation:portrait){
+ #app{grid-template-columns:1fr;grid-template-rows:auto auto auto auto auto}
+ html,body{overflow:auto}
+ .gauge{height:46vh}.map{height:30vh;flex:none}.sp{min-height:50vh}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <b id="clock">--:--</b>
+    <span class="pill"><span class="dot" id="gdot"></span><span id="gtxt">Mode démo</span></span>
+    <span class="pill" id="head">Cap — </span>
+  </div>
+
+  <div class="col">
+    <div class="card limit">
+      <div class="sign none" id="sign">—</div>
+      <div><div class="lbl">Limitation</div><div class="val" id="road">Route inconnue</div><div class="status" id="lstat" style="color:var(--mut)">en attente</div></div>
+    </div>
+    <div class="card map"><div class="lbl">Trajet</div><canvas id="map"></canvas>
+      <div class="navbtns"><a href="maps://?dirflg=d" id="aplans">Plans</a><a href="waze://?navigate=yes" id="awaze">Waze</a></div></div>
+  </div>
+
+  <div class="card gauge">
+    <svg viewBox="0 0 400 400" id="g">
+      <defs><linearGradient id="gr" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#2f7bff"/><stop offset="1" stop-color="#2fe6a6"/></linearGradient>
+      <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+      <path id="track" fill="none" stroke="#141c33" stroke-width="22" stroke-linecap="round"/>
+      <path id="arc" fill="none" stroke="url(#gr)" stroke-width="22" stroke-linecap="round" filter="url(#glow)"/>
+      <path id="lim" fill="none" stroke="#fff" stroke-width="3" opacity=".0"/>
+      <g id="ticks"></g>
+      <text id="spd" x="200" y="222" text-anchor="middle" class="spd" style="font-size:112px">0</text>
+      <text x="200" y="256" text-anchor="middle" class="unit">KM/H</text>
+    </svg>
+  </div>
+
+  <div class="col">
+    <div class="card sp">
+      <div class="lbl" id="sphead">Spotify</div>
+      <div class="cover" id="cover"></div>
+      <div>
+        <div class="tt" id="title">Rien en lecture</div>
+        <div class="ar" id="artist">Connecte Spotify dans Réglages</div>
+        <div class="bar"><i id="prog"></i></div>
+      </div>
+      <div class="ctl"><button id="prev">⏮</button><button id="play" class="main">▶</button><button id="next">⏭</button></div>
+    </div>
+  </div>
+</div>
+
+<button id="gear">⚙︎ Réglages</button>
+<div id="panel"><div class="box">
+  <h2>Réglages</h2>
+  <div class="row">
+    <button class="btn on" id="mDemo">Mode démo</button>
+    <button class="btn" id="mLive">Mode réel (GPS)</button>
+    <button class="btn" id="mHud">Mode HUD (miroir)</button>
+  </div>
+  <p>Le mode démo simule un trajet pour voir les animations. Le mode réel utilise le GPS de l'iPhone, qui demande une page en <b>https</b> ouverte dans Safari.</p>
+  <hr style="border:0;border-top:1px solid var(--line)">
+  <div class="lbl">Spotify (Premium requis pour les boutons)</div>
+  <input id="cid" placeholder="Client ID de ton app Spotify" autocapitalize="off" autocorrect="off">
+  <small>Adresse de redirection à enregistrer dans le tableau de bord Spotify : <code id="redir"></code></small>
+  <div class="row"><button class="btn" id="spConn">Connecter Spotify</button><button class="btn" id="spOff">Déconnecter</button></div>
+  <p id="msg"></p>
+  <div class="row"><button class="btn on" id="close">Fermer</button></div>
+</div></div>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
+const MAX=200,A0=135,SW=270;
+let mode='demo',target=0,shown=0,limit=null,heading=null,over=false;
+
+/* ---------- Jauge ---------- */
+const pt=(a,r)=>{const t=a*Math.PI/180;return[200+r*Math.cos(t),200+r*Math.sin(t)]};
+const arcPath=(from,to,r)=>{const[a,b]=pt(A0+SW*from/MAX,r),[c,d]=pt(A0+SW*to/MAX,r);return`M${a} ${b}A${r} ${r} 0 ${SW*(to-from)/MAX>180?1:0} 1 ${c} ${d}`};
+$('track').setAttribute('d',arcPath(0,MAX,160));
+let T='';for(let v=0;v<=MAX;v+=20){const[x1,y1]=pt(A0+SW*v/MAX,132),[x2,y2]=pt(A0+SW*v/MAX,142),[tx,ty]=pt(A0+SW*v/MAX,118);
+T+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#2a3558" stroke-width="2"/><text x="${tx}" y="${ty+4}" text-anchor="middle" fill="#5d6a93" font-size="11">${v}</text>`}
+$('ticks').innerHTML=T;
+function drawGauge(){
+  shown+=(target-shown)*0.12; if(Math.abs(target-shown)<0.05)shown=target;
+  const v=Math.max(0.01,Math.min(MAX,shown));
+  $('arc').setAttribute('d',arcPath(0,v,160));
+  $('spd').textContent=Math.round(shown);
+  over=limit!=null&&shown>limit+2;
+  $('arc').setAttribute('stroke',over?'#ff3b5c':'url(#gr)');
+  $('sign').classList.toggle('over',over);
+  if(limit){$('lim').setAttribute('d',arcPath(limit-0.8,limit+0.8,172));$('lim').setAttribute('opacity','.9')}else $('lim').setAttribute('opacity','0');
+  requestAnimationFrame(drawGauge);
+}
+function setLimit(l,name){
+  limit=l;const s=$('sign');
+  if(l){s.textContent=l;s.classList.remove('none')}else{s.textContent='—';s.classList.add('none')}
+  $('road').textContent=name||(l?'Route':'Route inconnue');
+  $('lstat').textContent=l?(over?'Tu dépasses la limite':'Dans la limite'):'limite non trouvée';
+}
+setInterval(()=>{if(limit){$('lstat').textContent=over?'Tu dépasses la limite':'Dans la limite';$('lstat').style.color=over?'var(--bad)':'var(--ok)'}else $('lstat').style.color='var(--mut)'},300);
+const dirs=['N','NE','E','SE','S','SO','O','NO'];
+function setHeading(h){heading=h;$('head').textContent=h==null?'Cap — ':'Cap '+dirs[Math.round(h/45)%8]+' '+Math.round(h)+'°'}
+setInterval(()=>{const d=new Date();$('clock').textContent=d.toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'})},1000);
+
+/* ---------- Carte du trajet (tracé) ---------- */
+const trail=[];const cv=$('map'),cx=cv.getContext('2d');
+function addPoint(x,y){const l=trail[trail.length-1];if(l&&Math.hypot(x-l[0],y-l[1])<3)return;trail.push([x,y]);if(trail.length>300)trail.shift()}
+function drawMap(t){
+  const r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1;
+  if(cv.width!==r.width*dpr){cv.width=r.width*dpr;cv.height=r.height*dpr}
+  cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,r.width,r.height);
+  // grille
+  cx.strokeStyle='#121a31';cx.lineWidth=1;for(let x=0;x<r.width;x+=34){cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,r.height);cx.stroke()}for(let y=0;y<r.height;y+=34){cx.beginPath();cx.moveTo(0,y);cx.lineTo(r.width,y);cx.stroke()}
+  if(trail.length>1){
+    const last=trail[trail.length-1],R=Math.max(120,Math.min(...[r.width,r.height])*0.9);
+    const sc=Math.min(r.width,r.height)/R*0.9;
+    const P=p=>[r.width/2+(p[0]-last[0])*sc*0.5,r.height/2-(p[1]-last[1])*sc*0.5];
+    cx.lineJoin='round';cx.lineCap='round';
+    for(let i=1;i<trail.length;i++){const a=P(trail[i-1]),b=P(trail[i]);cx.strokeStyle=`rgba(47,123,255,${0.15+0.85*i/trail.length})`;cx.lineWidth=5;cx.beginPath();cx.moveTo(...a);cx.lineTo(...b);cx.stroke()}
+    const c=P(last),pulse=(t/900)%1;
+    cx.strokeStyle=`rgba(47,230,166,${1-pulse})`;cx.lineWidth=2;cx.beginPath();cx.arc(c[0],c[1],8+pulse*22,0,7);cx.stroke();
+    cx.fillStyle='#fff';cx.beginPath();cx.arc(c[0],c[1],6,0,7);cx.fill();cx.fillStyle='#2f7bff';cx.beginPath();cx.arc(c[0],c[1],3.5,0,7);cx.fill();
+  }
+  requestAnimationFrame(drawMap);
+}
+
+/* ---------- Spotify : état commun ---------- */
+const SP={track:null,playing:false,pos:0,dur:1,live:false};
+function renderSP(){
+  const c=$('cover');
+  if(!SP.track){$('title').textContent='Rien en lecture';$('artist').textContent=SP.live?'Lance un morceau dans Spotify':'Connecte Spotify dans Réglages';$('play').textContent='▶';c.style.background='#1a2547';c.classList.remove('play');return}
+  $('title').textContent=SP.track.title;$('artist').textContent=SP.track.artist;
+  c.style.background=SP.track.img?`center/cover url(${SP.track.img})`:`linear-gradient(135deg,hsl(${SP.track.hue} 80% 55%),hsl(${(SP.track.hue+60)%360} 70% 25%))`;
+  $('play').textContent=SP.playing?'❚❚':'▶';c.classList.toggle('play',SP.playing);
+}
+setInterval(()=>{ // avance la barre en local
+  if(SP.track&&SP.playing){SP.pos=Math.min(SP.dur,SP.pos+0.25);if(!SP.live&&SP.pos>=SP.dur)demoNext()}
+  $('prog').style.width=(SP.track?100*SP.pos/SP.dur:0)+'%';
+},250);
+
+/* ---------- Mode démo ---------- */
+const DEMO=[{title:'Nuit sur l\'autoroute',artist:'Artiste démo',hue:215,d:200},{title:'Lumières du Val-de-Ruz',artist:'Groupe fictif',hue:150,d:185},{title:'Neuchâtel 2 h du mat',artist:'Artiste démo',hue:330,d:220},{title:'Dernier virage',artist:'Groupe fictif',hue:30,d:170}];
+let di=0,demoT=null,dx=0,dy=0,dh=0;
+const PH=[{l:50,v:46,d:14,n:'Rue de la Gare'},{l:80,v:79,d:16,n:'Route cantonale'},{l:120,v:116,d:18,n:'A5'},{l:80,v:91,d:9,n:'Route cantonale'},{l:50,v:34,d:12,n:'Peseux'}];
+function demoTrack(i){di=(i+DEMO.length)%DEMO.length;const t=DEMO[di];SP.track={title:t.title,artist:t.artist,hue:t.hue};SP.dur=t.d;SP.pos=0;renderSP()}
+function demoNext(){demoTrack(di+1)}
+function startDemo(){
+  stopAll();mode='demo';SP.live=false;SP.playing=true;demoTrack(0);
+  $('gdot').className='dot';$('gtxt').textContent='Mode démo';
+  trail.length=0;let t0=performance.now(),ph=0,pe=0,last=t0;
+  demoT=setInterval(()=>{
+    const now=performance.now(),dt=(now-last)/1000;last=now;pe+=dt;
+    if(pe>PH[ph].d){pe=0;ph=(ph+1)%PH.length}
+    const p=PH[ph];target=Math.max(0,p.v+Math.sin(now/700)*2);
+    if(limit!==p.l)setLimit(p.l,p.n);
+    dh+=Math.sin(now/5000)*dt*30+dt*8;const v=shown/3.6;
+    dx+=Math.sin(dh*Math.PI/180)*v*dt;dy+=Math.cos(dh*Math.PI/180)*v*dt;addPoint(dx,dy);
+    setHeading(((dh%360)+360)%360);
+  },100);
+}
+
+/* ---------- Mode réel ---------- */
+let watchId=null,lastPos=null,lastQ=null,lastQT=0,wake=null;
+function stopAll(){clearInterval(demoT);if(watchId!=null)navigator.geolocation.unwatchPosition(watchId);watchId=null;clearInterval(spPoll);spPoll=null}
+const R_EARTH=6371000,toXY=(lat,lon,o)=>[(lon-o.lon)*Math.PI/180*R_EARTH*Math.cos(o.lat*Math.PI/180),(lat-o.lat)*Math.PI/180*R_EARTH];
+let origin=null;
+async function startLive(){
+  stopAll();mode='live';trail.length=0;setLimit(null);target=0;
+  SP.live=true;SP.track=null;SP.playing=false;renderSP();
+  if(!navigator.geolocation){$('msg').textContent='GPS indisponible ici.';return}
+  $('gdot').className='dot';$('gtxt').textContent='GPS : recherche…';
+  try{wake=await navigator.wakeLock.request('screen')}catch(e){}
+  watchId=navigator.geolocation.watchPosition(p=>{
+    const c=p.coords;$('gdot').className='dot ok';$('gtxt').textContent='GPS : actif';
+    let v=c.speed!=null&&c.speed>=0?c.speed*3.6:null;
+    if(v==null&&lastPos){const dt=(p.timestamp-lastPos.timestamp)/1000;if(dt>0){const d=hav(lastPos.coords,c);v=d/dt*3.6}}
+    target=v!=null?(v<2?0:v):0;lastPos=p;
+    if(c.heading!=null&&!isNaN(c.heading)&&target>3)setHeading(c.heading);
+    if(!origin)origin={lat:c.latitude,lon:c.longitude};
+    const[x,y]=toXY(c.latitude,c.longitude,origin);addPoint(x,y);
+    fetchLimit(c.latitude,c.longitude);
+  },e=>{$('gdot').className='dot';$('gtxt').textContent='GPS : refusé ou indisponible';$('msg').textContent='Erreur GPS : '+e.message},{enableHighAccuracy:true,maximumAge:1000,timeout:15000});
+  if(store.get('sp_token'))startSpotifyPoll();
+}
+const hav=(a,b)=>{const r=Math.PI/180,dL=(b.latitude-a.latitude)*r,dO=(b.longitude-a.longitude)*r,h=Math.sin(dL/2)**2+Math.cos(a.latitude*r)*Math.cos(b.latitude*r)*Math.sin(dO/2)**2;return 2*R_EARTH*Math.asin(Math.sqrt(h))};
+const CH={'CH:urban':50,'CH:rural':80,'CH:trunk':100,'CH:motorway':120};
+function parseMax(s){if(!s)return null;if(CH[s])return CH[s];const m=String(s).match(/^(\d+)/);return m?+m[1]:null}
+async function fetchLimit(lat,lon){
+  const now=Date.now();
+  if(lastQ&&hav({latitude:lat,longitude:lon},lastQ)<35&&now-lastQT<20000)return;
+  if(now-lastQT<4000)return; lastQ={latitude:lat,longitude:lon};lastQT=now;
+  const q=`[out:json][timeout:6];way(around:22,${lat},${lon})["highway"];out tags center 8;`;
+  try{
+    const r=await fetch('https://overpass-api.de/api/interpreter',{method:'POST',body:'data='+encodeURIComponent(q)});
+    const j=await r.json();
+    const ways=(j.elements||[]).filter(w=>w.center).map(w=>({w,d:Math.hypot((w.center.lat-lat)*111000,(w.center.lon-lon)*111000*Math.cos(lat*Math.PI/180))})).sort((a,b)=>a.d-b.d);
+    const withLim=ways.find(o=>parseMax(o.w.tags.maxspeed));
+    const best=withLim||ways[0];
+    if(best){const l=parseMax(best.w.tags.maxspeed);setLimit(l,best.w.tags.name||best.w.tags.ref||'Route')}else setLimit(null);
+  }catch(e){$('lstat').textContent='limite indisponible (réseau)'}
+}
+
+/* ---------- Spotify réel (PKCE) ---------- */
+const redirect=location.origin+location.pathname;$('redir').textContent=redirect;
+const rand=n=>{const a=new Uint8Array(n);crypto.getRandomValues(a);return btoa(String.fromCharCode(...a)).replace(/[^a-zA-Z0-9]/g,'').slice(0,n)};
+const b64=b=>btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+async function spLogin(){
+  const id=$('cid').value.trim();if(!id){$('msg').textContent='Entre ton Client ID Spotify.';return}
+  store.set('sp_cid',id);const v=rand(64);store.set('sp_v',v);
+  const ch=b64(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v)));
+  location.href='https://accounts.spotify.com/authorize?'+new URLSearchParams({client_id:id,response_type:'code',redirect_uri:redirect,scope:'user-read-playback-state user-modify-playback-state',code_challenge_method:'S256',code_challenge:ch});
+}
+async function tokenReq(body){
+  const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
+  const j=await r.json();if(!j.access_token)throw new Error(j.error_description||'Jeton refusé');
+  store.set('sp_token',j.access_token);if(j.refresh_token)store.set('sp_refresh',j.refresh_token);store.set('sp_exp',Date.now()+j.expires_in*1000-60000);
+}
+async function spToken(){
+  if(Date.now()>+store.get('sp_exp')&&store.get('sp_refresh'))await tokenReq({grant_type:'refresh_token',refresh_token:store.get('sp_refresh'),client_id:store.get('sp_cid')});
+  return store.get('sp_token');
+}
+async function spApi(path,method='GET'){
+  const t=await spToken();if(!t)return null;
+  const r=await fetch('https://api.spotify.com/v1/me/player'+path,{method,headers:{Authorization:'Bearer '+t}});
+  if(r.status===204||r.status===202)return {};
+  if(!r.ok){$('msg').textContent='Spotify : erreur '+r.status+(r.status===403?' (Premium requis pour les commandes)':'');return null}
+  return method==='GET'?r.json():{};
+}
+let spPoll=null;
+async function pollSP(){
+  try{
+    const j=await spApi('');
+    if(!j||!j.item){SP.track=null;SP.playing=false;renderSP();return}
+    SP.track={title:j.item.name,artist:j.item.artists.map(a=>a.name).join(', '),img:(j.item.album.images[1]||j.item.album.images[0]||{}).url};
+    SP.playing=j.is_playing;SP.pos=j.progress_ms/1000;SP.dur=j.item.duration_ms/1000;renderSP();
+  }catch(e){$('msg').textContent='Spotify : '+e.message}
+}
+function startSpotifyPoll(){clearInterval(spPoll);pollSP();spPoll=setInterval(pollSP,3000)}
+async function handleRedirect(){
+  const p=new URLSearchParams(location.search),code=p.get('code');
+  if(code&&store.get('sp_v')){
+    try{await tokenReq({grant_type:'authorization_code',code,redirect_uri:redirect,client_id:store.get('sp_cid'),code_verifier:store.get('sp_v')});history.replaceState(null,'',location.pathname);return true}catch(e){$('msg').textContent='Connexion Spotify : '+e.message;$('panel').classList.add('on')}
+  }
+  return false;
+}
+
+/* ---------- Boutons ---------- */
+$('play').onclick=async()=>{
+  if(!SP.live){SP.playing=!SP.playing;renderSP();return}
+  await spApi(SP.playing?'/pause':'/play','PUT');pollSP();
+};
+$('next').onclick=async()=>{if(!SP.live)return demoNext();await spApi('/next','POST');setTimeout(pollSP,600)};
+$('prev').onclick=async()=>{if(!SP.live)return demoTrack(di-1);await spApi('/previous','POST');setTimeout(pollSP,600)};
+$('gear').onclick=()=>$('panel').classList.add('on');
+$('close').onclick=()=>$('panel').classList.remove('on');
+$('mDemo').onclick=()=>{$('mDemo').classList.add('on');$('mLive').classList.remove('on');startDemo();$('msg').textContent=''};
+$('mLive').onclick=()=>{$('mLive').classList.add('on');$('mDemo').classList.remove('on');startLive();$('msg').textContent='Autorise la localisation quand Safari te le demande.'};
+$('mHud').onclick=e=>{$('app').classList.toggle('hud');e.target.classList.toggle('on')};
+$('spConn').onclick=spLogin;
+$('spOff').onclick=()=>{['sp_token','sp_refresh','sp_exp','sp_v'].forEach(store.del);clearInterval(spPoll);SP.track=null;renderSP();$('msg').textContent='Spotify déconnecté.'};
+$('cid').value=store.get('sp_cid')||'';
+
+requestAnimationFrame(drawGauge);requestAnimationFrame(drawMap);
+handleRedirect().then(ok=>{if(ok){$('mLive').click();$('msg').textContent='Spotify connecté.'}else startDemo()});
+})();
+</script>
+</body>
+</html>
