@@ -32,12 +32,13 @@ button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
   column-gap:clamp(20px,4vw,64px);padding:max(12px,env(safe-area-inset-top)) max(22px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(22px,env(safe-area-inset-left));transition:transform .3s}
 #app.hud{transform:scaleX(-1)}
 
-.bar{grid-column:1/-1;display:flex;align-items:center;gap:16px;height:30px;color:var(--mut);font-size:14px;letter-spacing:.04em}
+.bar{grid-column:1/-1;display:flex;align-items:center;gap:16px;min-height:30px;color:var(--mut);font-size:14px;letter-spacing:.04em}
 .bar #clock{font-family:var(--num);font-weight:600;font-size:20px;color:var(--fg);letter-spacing:.02em;font-variant-numeric:tabular-nums}
 .src{display:flex;align-items:center;gap:8px;margin-left:auto}
 .src i{width:7px;height:7px;border-radius:50%;background:var(--dim)}
 .src i.ok{background:#6fcf97}
-#note{color:var(--mut);font-size:13px}
+#note{color:var(--fg);font-size:13px;line-height:1.3;flex:1;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.src{cursor:pointer}
 
 /* Compteur */
 .speed{min-height:0;display:flex;align-items:center;justify-content:center}
@@ -240,7 +241,7 @@ async function lookupLimit(lat, lon){
 
 /* ================= Source : GPS réel ================= */
 let watchId = null, wakeLock = null, lastFix = null;
-function notify(text){ const n = $('note'); n.textContent = text; clearTimeout(notify.t); notify.t = setTimeout(() => { n.textContent = '' }, 7000) }
+function notify(text, ms){ const n = $('note'); n.textContent = text; clearTimeout(notify.t); notify.t = setTimeout(() => { n.textContent = '' }, ms || 7000) }
 function setSource(text, ok){ $('srcTxt').textContent = text; $('dot').className = ok ? 'ok' : '' }
 async function keepAwake(){ try{ wakeLock = await navigator.wakeLock.request('screen') }catch(e){} }
 function speedFromFix(fix){
@@ -253,13 +254,19 @@ function speedFromFix(fix){
   return null;
 }
 function onFix(fix){
-  setSource('GPS actif', true);
+  setSource('GPS actif · ±' + Math.round(fix.coords.accuracy) + ' m', true);
   const v = speedFromFix(fix);
   state.target = v == null || v < 2 ? 0 : v;
   lastFix = fix;
   lookupLimit(fix.coords.latitude, fix.coords.longitude);
 }
-function onFixError(e){ setSource('GPS indisponible', false); notify('Erreur GPS : ' + e.message)}
+function onFixError(e){
+  const causes = {1:'Localisation refusée', 2:'Position indisponible', 3:'GPS trop long à répondre'};
+  setSource(causes[e.code] || 'GPS indisponible', false);
+  notify(e.code === 1
+    ? 'Autorise la localisation : Réglages iPhone > Confidentialité et sécurité > Service de localisation > ton navigateur > Lors de l\u2019utilisation. Puis touche l\u2019état GPS en haut.'
+    : 'Va à l\u2019extérieur ou touche l\u2019état GPS en haut pour réessayer.', 20000);
+}
 function startLive(){
   stopSources();
   state.mode = 'live'; setLimit(null); state.target = 0;
@@ -450,6 +457,7 @@ function tickClock(){ $('clock').textContent = new Date().toLocaleTimeString('fr
 function skipSpotify(){ try{ sessionStorage.setItem('sp_skip', '1') }catch(e){} hideWelcome(); startLive() }
 function hasSkipped(){ try{ return sessionStorage.getItem('sp_skip') === '1' }catch(e){ return false } }
 function bindUi(){
+  $('srcTxt').parentElement.onclick = () => { if (state.mode === 'live') startLive() };
   $('wConnect').onclick = spotifyLogin; $('wSkip').onclick = skipSpotify;
   $('meta').onclick = $('cover').onclick = () => { if (!store.get('sp_token')) spotifyLogin() };
   $('play').onclick = togglePlay; $('next').onclick = () => skip(1); $('prev').onclick = () => skip(-1);
@@ -458,10 +466,16 @@ function bindUi(){
 
 /* ================= Démarrage =================
    Adresse + #demo : trajet simulé (pour tester sans rouler)
-   Adresse + #hud  : affichage miroir pour pare-brise */
+   Adresse + #hud  : affichage miroir pour pare-brise
+   Adresse + #reset : déconnecte Spotify et réaffiche l'écran de connexion */
 async function boot(){
   buildGauge(); bindUi(); tickClock(); setInterval(tickClock, 1000);
   requestAnimationFrame(frame);
+  if (location.hash.indexOf('reset') >= 0){
+    ['sp_token','sp_refresh','sp_exp','sp_v'].forEach(k => store.del(k));
+    try{ sessionStorage.removeItem('sp_skip') }catch(e){}
+    history.replaceState(null, '', location.pathname);
+  }
   if (location.hash.indexOf('hud') >= 0) toggleHud();
   if (location.hash.indexOf('demo') >= 0){ startDemo(); return }
   const justLoggedIn = await finishSpotifyLogin();
