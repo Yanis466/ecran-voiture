@@ -6,20 +6,39 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Écran de voiture</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
 :root{--bg:#05070d;--card:#0d1220;--line:#1b2440;--txt:#eef2ff;--mut:#7d88ab;--acc:#2f7bff;--ok:#2fe6a6;--warn:#ffb020;--bad:#ff3b5c}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;background:var(--bg);color:var(--txt);font-family:-apple-system,"SF Pro Display",system-ui,sans-serif;overflow:hidden;user-select:none}
 body{padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))}
-#app{height:100%;display:grid;grid-template-columns:1fr 1.25fr 1fr;grid-template-rows:auto 1fr;gap:10px;transition:transform .4s}
+#app{position:relative;z-index:1;height:100%;display:grid;grid-template-columns:1fr 1.25fr 1fr;grid-template-rows:auto 1fr;gap:10px;transition:transform .4s}
 #app.hud{transform:scaleX(-1)}
 .top{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;font-size:14px;color:var(--mut)}
 .top b{color:var(--txt);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
 .pill{display:inline-flex;gap:6px;align-items:center;padding:5px 11px;border:1px solid var(--line);border-radius:99px;background:var(--card);font-size:12px;color:var(--mut)}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--warn);box-shadow:0 0 8px currentColor}
 .dot.ok{background:var(--ok)}
-.card{background:linear-gradient(160deg,#0f1628,#090d18);border:1px solid var(--line);border-radius:22px;padding:14px;position:relative;overflow:hidden;min-height:0}
+.card{background:linear-gradient(160deg,#0f1628b8,#090d18b0);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:22px;padding:14px;position:relative;overflow:hidden;min-height:0}
 .col{display:flex;flex-direction:column;gap:10px;min-height:0}
+/* Fond animé (couleurs de la pochette) */
+#bg{position:fixed;inset:0;z-index:0;overflow:hidden;background:#05070d}
+#bg i{position:absolute;width:70vmax;height:70vmax;border-radius:50%;filter:blur(90px);opacity:.5;background-color:#2f7bff;transition:background-color 1.8s ease;will-change:transform}
+#bg .b1{left:-20vmax;top:-25vmax;animation:d1 22s ease-in-out infinite alternate}
+#bg .b2{right:-25vmax;top:8vmax;animation:d2 28s ease-in-out infinite alternate}
+#bg .b3{left:8vmax;bottom:-38vmax;animation:d3 34s ease-in-out infinite alternate}
+@keyframes d1{to{transform:translate(32vmax,20vmax) scale(1.2)}}
+@keyframes d2{to{transform:translate(-30vmax,14vmax) scale(.85)}}
+@keyframes d3{to{transform:translate(26vmax,-18vmax) scale(1.15)}}
+/* Mode son seul */
+#aud{position:fixed;inset:0;z-index:20;background:#000;display:none;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#46527a;text-align:center;padding:20px}
+#aud.on{display:flex}
+#aud .as{font-size:22vh;font-weight:700;line-height:1;color:#56649a;font-variant-numeric:tabular-nums}
+#aud .au{letter-spacing:.3em;font-size:14px}
+#aud .al{font-size:22px;color:#5a6890;min-height:1.2em}
+#aud .an{font-size:18px;color:#6b7aa8;max-width:90%;min-height:1.2em}
+#aud .ah{position:absolute;bottom:max(14px,env(safe-area-inset-bottom));font-size:12px;color:#2c3555}
 /* Gauge */
 .gauge{display:flex;align-items:center;justify-content:center}
 .gauge svg{width:100%;height:100%;max-height:100%}
@@ -35,11 +54,23 @@ body{padding:max(10px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-rig
 .lbl{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
 .val{font-size:clamp(18px,4.6vh,26px);font-weight:600;margin-top:3px}
 .status{font-size:13px;margin-top:4px}
-canvas{width:100%;height:100%;display:block}
-.map{flex:1;padding:0}
-.map .lbl{position:absolute;left:14px;top:12px;z-index:2}
-.navbtns{position:absolute;right:10px;bottom:10px;display:flex;gap:6px;z-index:2}
-.navbtns a{font-size:12px;color:var(--txt);text-decoration:none;padding:6px 10px;border-radius:12px;background:#1a2547;border:1px solid var(--line)}
+.map{flex:1;padding:0;min-height:150px}
+#lmap{position:absolute;inset:0;background:#0a0f1d;border-radius:22px}
+.leaflet-tile-pane{filter:invert(1) hue-rotate(180deg) brightness(.9) contrast(.85) saturate(.7)}
+.leaflet-control-attribution{background:#0a0f1dcc!important;color:#8a94b8!important;font-size:9px!important}
+.leaflet-control-attribution a{color:#9db4ff!important}
+.me svg{width:40px;height:40px;filter:drop-shadow(0 0 6px #2f7bff);transition:transform .4s}
+.pin{font-size:26px;color:#ff3b5c;filter:drop-shadow(0 2px 4px #000)}
+.nav{position:absolute;left:8px;right:8px;top:8px;z-index:500;display:none;gap:12px;align-items:center;background:#0b1122ee;border:1px solid var(--line);border-radius:16px;padding:8px 12px}
+.nav.on{display:flex}
+.arrow{font-size:clamp(28px,7vh,44px);width:1.3em;text-align:center;color:var(--acc)}
+.nd{font-size:clamp(18px,4.6vh,26px);font-weight:700}
+.nt{font-size:13px;color:var(--mut);line-height:1.25}
+.eta{position:absolute;left:8px;bottom:44px;z-index:500;display:none;font-size:12px;background:#0b1122ee;border:1px solid var(--line);border-radius:99px;padding:4px 10px}
+.eta.on{display:block}
+.mbtns{position:absolute;left:8px;bottom:8px;z-index:500;display:flex;gap:6px}
+.mbtns button{background:#1a2547ee;color:var(--txt);border:1px solid var(--line);border-radius:14px;padding:7px 11px;font-size:13px}
+.res{text-align:left;width:100%;font-size:13px}
 /* Spotify */
 .sp{display:flex;flex-direction:column;justify-content:space-between;flex:1}
 .cover{width:100%;max-width:min(100%,32vh);aspect-ratio:1;border-radius:18px;background:#1a2547 center/cover;margin:4px auto 0;box-shadow:0 12px 40px #0009;transition:transform .5s}
@@ -55,24 +86,26 @@ canvas{width:100%;height:100%;display:block}
 .ctl button:active{transform:scale(.9)}
 /* Settings */
 #gear{position:fixed;right:max(10px,env(safe-area-inset-right));bottom:max(8px,env(safe-area-inset-bottom));z-index:9;background:#0d1220cc;color:var(--mut);border:1px solid var(--line);border-radius:99px;padding:6px 12px;font-size:12px}
-#panel{position:fixed;inset:0;background:#05070dee;backdrop-filter:blur(16px);z-index:10;display:none;align-items:center;justify-content:center;padding:20px}
-#panel.on{display:flex}
-#panel .box{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:20px;width:min(560px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px}
-#panel h2{font-size:20px}
-#panel p,#panel small{color:var(--mut);font-size:13px;line-height:1.45}
+#panel,#dpanel{position:fixed;inset:0;background:#05070dee;backdrop-filter:blur(16px);z-index:10;display:none;align-items:center;justify-content:center;padding:20px}
+#panel.on,#dpanel.on{display:flex}
+#panel .box,#dpanel .box{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:20px;width:min(560px,100%);max-height:100%;overflow:auto;display:flex;flex-direction:column;gap:12px}
+#panel h2,#dpanel h2{font-size:20px}
+#panel p,#panel small,#dpanel p,#dpanel small{color:var(--mut);font-size:13px;line-height:1.45}
 #panel code{background:#1a2547;padding:2px 6px;border-radius:6px;color:var(--txt);word-break:break-all}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .btn{background:#1a2547;color:var(--txt);border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-size:14px}
 .btn.on{background:var(--acc);border-color:var(--acc)}
-input{background:#0a0f1d;border:1px solid var(--line);color:var(--txt);border-radius:12px;padding:10px 12px;font-size:14px;width:100%}
+input{background:#0a0f1d;border:1px solid var(--line);color:var(--txt);border-radius:12px;padding:10px 12px;font-size:16px;width:100%;flex:1;min-width:0}
 @media (orientation:portrait){
  #app{grid-template-columns:1fr;grid-template-rows:auto auto auto auto auto}
  html,body{overflow:auto}
- .gauge{height:46vh}.map{height:30vh;flex:none}.sp{min-height:50vh}
+ .gauge{height:46vh}.map{height:42vh;flex:none}.sp{min-height:50vh}
 }
 </style>
 </head>
 <body>
+<div id="bg"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
+<div id="aud"><div class="as" id="as">0</div><div class="au">KM/H</div><div class="al" id="al"></div><div class="an" id="an"></div><div class="ah">Touche l'écran pour revenir à l'affichage complet</div></div>
 <div id="app">
   <div class="top">
     <b id="clock">--:--</b>
@@ -85,8 +118,10 @@ input{background:#0a0f1d;border:1px solid var(--line);color:var(--txt);border-ra
       <div class="sign none" id="sign">—</div>
       <div><div class="lbl">Limitation</div><div class="val" id="road">Route inconnue</div><div class="status" id="lstat" style="color:var(--mut)">en attente</div></div>
     </div>
-    <div class="card map"><div class="lbl">Trajet</div><canvas id="map"></canvas>
-      <div class="navbtns"><a href="maps://?dirflg=d" id="aplans">Plans</a><a href="waze://?navigate=yes" id="awaze">Waze</a></div></div>
+    <div class="card map"><div id="lmap"></div>
+      <div class="nav" id="nav"><div class="arrow" id="narrow">↑</div><div><div class="nd" id="ndist"></div><div class="nt" id="ntext"></div></div></div>
+      <div class="eta" id="eta"></div>
+      <div class="mbtns"><button id="dest">📍 Destination</button><button id="voice">🔊</button><button id="stopnav" style="display:none">✕ Arrêter</button></div></div>
   </div>
 
   <div class="card gauge">
@@ -123,7 +158,9 @@ input{background:#0a0f1d;border:1px solid var(--line);color:var(--txt);border-ra
     <button class="btn on" id="mDemo">Mode démo</button>
     <button class="btn" id="mLive">Mode réel (GPS)</button>
     <button class="btn" id="mHud">Mode HUD (miroir)</button>
+    <button class="btn" id="mAudio">Mode son seul</button>
   </div>
+  <p><b>Mode son seul :</b> écran noir presque vide, avec la voix du guidage et une alerte si tu dépasses la limite. Touche l'écran pour revenir.</p>
   <p>Le mode démo simule un trajet pour voir les animations. Le mode réel utilise le GPS de l'iPhone, qui demande une page en <b>https</b> ouverte dans Safari.</p>
   <hr style="border:0;border-top:1px solid var(--line)">
   <div class="lbl">Spotify (Premium requis pour les boutons)</div>
@@ -132,6 +169,15 @@ input{background:#0a0f1d;border:1px solid var(--line);color:var(--txt);border-ra
   <div class="row"><button class="btn" id="spConn">Connecter Spotify</button><button class="btn" id="spOff">Déconnecter</button></div>
   <p id="msg"></p>
   <div class="row"><button class="btn on" id="close">Fermer</button></div>
+</div></div>
+
+<div id="dpanel"><div class="box">
+  <h2>Destination</h2>
+  <div class="row" style="flex-wrap:nowrap"><input id="dq" placeholder="Adresse ou lieu, ex : Gare de Neuchâtel" autocapitalize="off" autocorrect="off"><button class="btn on" id="dgo">Chercher</button></div>
+  <div id="dres" style="display:flex;flex-direction:column;gap:6px"></div>
+  <p id="dmsg"></p>
+  <small>Itinéraire en voiture calculé avec les données OpenStreetMap, instructions vocales en français.</small>
+  <div class="row"><button class="btn on" id="dclose">Fermer</button></div>
 </div></div>
 
 <script>
@@ -170,31 +216,170 @@ const dirs=['N','NE','E','SE','S','SO','O','NO'];
 function setHeading(h){heading=h;$('head').textContent=h==null?'Cap — ':'Cap '+dirs[Math.round(h/45)%8]+' '+Math.round(h)+'°'}
 setInterval(()=>{const d=new Date();$('clock').textContent=d.toLocaleTimeString('fr-CH',{hour:'2-digit',minute:'2-digit'})},1000);
 
-/* ---------- Carte du trajet (tracé) ---------- */
-const trail=[];const cv=$('map'),cx=cv.getContext('2d');
-function addPoint(x,y){const l=trail[trail.length-1];if(l&&Math.hypot(x-l[0],y-l[1])<3)return;trail.push([x,y]);if(trail.length>300)trail.shift()}
-function drawMap(t){
-  const r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1;
-  if(cv.width!==r.width*dpr){cv.width=r.width*dpr;cv.height=r.height*dpr}
-  cx.setTransform(dpr,0,0,dpr,0,0);cx.clearRect(0,0,r.width,r.height);
-  // grille
-  cx.strokeStyle='#121a31';cx.lineWidth=1;for(let x=0;x<r.width;x+=34){cx.beginPath();cx.moveTo(x,0);cx.lineTo(x,r.height);cx.stroke()}for(let y=0;y<r.height;y+=34){cx.beginPath();cx.moveTo(0,y);cx.lineTo(r.width,y);cx.stroke()}
-  if(trail.length>1){
-    const last=trail[trail.length-1],R=Math.max(120,Math.min(...[r.width,r.height])*0.9);
-    const sc=Math.min(r.width,r.height)/R*0.9;
-    const P=p=>[r.width/2+(p[0]-last[0])*sc*0.5,r.height/2-(p[1]-last[1])*sc*0.5];
-    cx.lineJoin='round';cx.lineCap='round';
-    for(let i=1;i<trail.length;i++){const a=P(trail[i-1]),b=P(trail[i]);cx.strokeStyle=`rgba(47,123,255,${0.15+0.85*i/trail.length})`;cx.lineWidth=5;cx.beginPath();cx.moveTo(...a);cx.lineTo(...b);cx.stroke()}
-    const c=P(last),pulse=(t/900)%1;
-    cx.strokeStyle=`rgba(47,230,166,${1-pulse})`;cx.lineWidth=2;cx.beginPath();cx.arc(c[0],c[1],8+pulse*22,0,7);cx.stroke();
-    cx.fillStyle='#fff';cx.beginPath();cx.arc(c[0],c[1],6,0,7);cx.fill();cx.fillStyle='#2f7bff';cx.beginPath();cx.arc(c[0],c[1],3.5,0,7);cx.fill();
-  }
-  requestAnimationFrame(drawMap);
+/* ---------- Carte + navigation ---------- */
+const DEMO_O={lat:46.9896,lon:6.9293};
+let CUR=null,map=null,me=null,routeLine=null,destMk=null,voiceOn=true,pauseFollow=0;
+const NAV={on:false,dest:null,coords:[],cum:[],steps:[],i:0,said:{},off:0,lastReq:0,minDn:1e9,dist:1,dur:1,demoD:0};
+try{
+  map=L.map('lmap',{zoomControl:false,dragging:false,touchZoom:false,doubleClickZoom:false,scrollWheelZoom:false,boxZoom:false,keyboard:false}).setView([DEMO_O.lat,DEMO_O.lon],16);
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(map);
+  me=L.marker([DEMO_O.lat,DEMO_O.lon],{interactive:false,icon:L.divIcon({className:'',html:'<div class="me"><svg viewBox="0 0 40 40" id="mearrow"><path d="M20 4 L32 34 L20 28 L8 34 Z" fill="#2f7bff" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"/></svg></div>',iconSize:[40,40],iconAnchor:[20,20]})}).addTo(map);
+}catch(e){$('lmap').innerHTML='<p style="padding:20px;color:#7d88ab">Carte indisponible (réseau)</p>'}
+
+const hv=(a,b)=>hav({latitude:a.lat,longitude:a.lon},{latitude:b.lat,longitude:b.lon});
+function segDist(p,a,b){const k=Math.cos(p.lat*Math.PI/180),X=q=>(q.lon-p.lon)*111320*k,Y=q=>(q.lat-p.lat)*111320;
+  const ax=X(a),ay=Y(a),bx=X(b),by=Y(b),dx=bx-ax,dy=by-ay,l=dx*dx+dy*dy;let t=l?-(ax*dx+ay*dy)/l:0;t=Math.max(0,Math.min(1,t));return Math.hypot(ax+t*dx,ay+t*dy)}
+const fmtD=d=>d<1000?Math.max(10,Math.round(d/10)*10)+' m':(d/1000).toFixed(1).replace('.',',')+' km';
+const MOD={'left':'à gauche','right':'à droite','slight left':'légèrement à gauche','slight right':'légèrement à droite','sharp left':'franchement à gauche','sharp right':'franchement à droite','straight':'tout droit','uturn':'demi-tour'};
+const ARR={'left':'↰','right':'↱','slight left':'↖','slight right':'↗','sharp left':'↙','sharp right':'↘','straight':'↑','uturn':'↶'};
+function arrow(m){if(m.type==='arrive')return'⚑';if(m.type==='roundabout'||m.type==='rotary')return'⟳';return ARR[m.modifier]||'↑'}
+function txt(s){const m=s.m,t=m.type,mod=MOD[m.modifier]||'',n=s.name?' sur '+s.name:'';
+  if(t==='arrive')return'Tu es arrivé';
+  if(t==='depart')return'Démarre'+n;
+  if(t==='roundabout'||t==='rotary'){const e=m.exit;return e?`Au rond-point, prends la ${e===1?'1re':e+'e'} sortie${n}`:'Prends le rond-point'}
+  if(m.modifier==='uturn')return'Fais demi-tour';
+  if(t==='fork')return`À la bifurcation, prends ${mod||'la voie'}${n}`;
+  if(t==='merge')return'Insère-toi'+n;
+  if(t==='on ramp')return`Prends la bretelle ${mod}${n}`;
+  if(t==='off ramp')return`Prends la sortie ${mod}${n}`;
+  if(t==='end of road')return`Au bout de la route, tourne ${mod}${n}`;
+  if(t==='continue'||t==='new name'||m.modifier==='straight')return`Continue ${mod||'tout droit'}${n}`;
+  return`Tourne ${mod}${n}`}
+function unlockVoice(){try{const u=new SpeechSynthesisUtterance(' ');u.volume=0;speechSynthesis.speak(u)}catch(e){}}
+function speak(t){if(!voiceOn||!('speechSynthesis' in window))return;try{const u=new SpeechSynthesisUtterance(t);u.lang='fr-FR';const v=speechSynthesis.getVoices().find(x=>x.lang&&x.lang.toLowerCase().startsWith('fr'));if(v)u.voice=v;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
+
+function onPos(lat,lon,spd,hdg){
+  CUR={lat,lon};
+  if(me){me.setLatLng([lat,lon]);if(hdg!=null){const a=document.getElementById('mearrow');if(a)a.style.transform='rotate('+hdg+'deg)'}}
+  if(map&&Date.now()>pauseFollow){const z=spd>90?15:spd>55?16:17;map.setView([lat,lon],z,{animate:true,duration:.6})}
+  navTick(lat,lon,spd);
 }
+async function buildRoute(from,to){
+  const u='https://routing.openstreetmap.de/routed-car/route/v1/driving/'+from.lon+','+from.lat+';'+to.lon+','+to.lat+'?overview=full&geometries=geojson&steps=true';
+  const r=await fetch(u);const j=await r.json();
+  if(!j.routes||!j.routes[0])throw new Error('aucun itinéraire trouvé');
+  const rt=j.routes[0];
+  NAV.coords=rt.geometry.coordinates.map(c=>({lat:c[1],lon:c[0]}));
+  NAV.cum=[0];for(let k=1;k<NAV.coords.length;k++)NAV.cum.push(NAV.cum[k-1]+hv(NAV.coords[k-1],NAV.coords[k]));
+  NAV.steps=rt.legs.flatMap(l=>l.steps).map(s=>({d:s.distance,name:s.name,m:s.maneuver,loc:{lat:s.maneuver.location[1],lon:s.maneuver.location[0]}}));
+  NAV.dist=rt.distance||1;NAV.dur=rt.duration;NAV.i=0;NAV.said={};NAV.minDn=1e9;NAV.off=0;
+  if(routeLine&&map)map.removeLayer(routeLine);
+  if(map)routeLine=L.polyline(NAV.coords.map(c=>[c.lat,c.lon]),{color:'#2f7bff',weight:7,opacity:.9}).addTo(map);
+}
+async function startNav(dest){
+  const from=CUR||DEMO_O;
+  $('dmsg').textContent='Calcul de l\'itinéraire…';
+  try{
+    NAV.dest=dest;await buildRoute(from,dest);NAV.on=true;NAV.demoD=0;
+    if(map){if(destMk)map.removeLayer(destMk);destMk=L.marker([dest.lat,dest.lon],{interactive:false,icon:L.divIcon({className:'',html:'<div class="pin">⚑</div>',iconSize:[30,30],iconAnchor:[6,28]})}).addTo(map);
+      pauseFollow=Date.now()+3500;map.fitBounds(routeLine.getBounds(),{padding:[40,40]})}
+    $('nav').classList.add('on');$('eta').classList.add('on');$('stopnav').style.display='';
+    $('dpanel').classList.remove('on');$('dmsg').textContent='';
+    speak('Itinéraire calculé, '+Math.max(1,Math.round(NAV.dur/60))+' minutes.');
+    navTick(from.lat,from.lon,0);
+  }catch(e){NAV.on=false;$('dmsg').textContent='Itinéraire impossible : '+e.message}
+}
+function clearNav(){
+  NAV.on=false;NAV.steps=[];NAV.coords=[];NAV.cum=[];
+  if(map){if(routeLine){map.removeLayer(routeLine);routeLine=null}if(destMk){map.removeLayer(destMk);destMk=null}}
+  $('nav').classList.remove('on');$('eta').classList.remove('on');$('stopnav').style.display='none';
+}
+function arrive(){speak('Tu es arrivé à destination.');clearNav()}
+function navTick(lat,lon,spd){
+  if(!NAV.on||NAV.steps.length<2)return;
+  const p={lat,lon};let d=1e9;
+  for(let k=1;k<NAV.coords.length;k++){const x=segDist(p,NAV.coords[k-1],NAV.coords[k]);if(x<d)d=x}
+  if(d>60){NAV.off++;if(NAV.off>=3&&Date.now()-NAV.lastReq>10000){NAV.lastReq=Date.now();speak('Recalcul de l\'itinéraire.');buildRoute(p,NAV.dest).catch(()=>{})}}else NAV.off=0;
+  const last=NAV.steps.length-1;
+  let i=NAV.i,nxt=NAV.steps[i+1],dn=hv(p,nxt.loc);
+  if(dn<NAV.minDn)NAV.minDn=dn;
+  if(dn<28||(NAV.minDn<80&&dn>NAV.minDn+30)){
+    if(i+1>=last){arrive();return}
+    NAV.i++;NAV.minDn=1e9;i=NAV.i;nxt=NAV.steps[i+1];dn=hv(p,nxt.loc);
+  }
+  let rem=dn;for(let j=i+1;j<=last;j++)rem+=NAV.steps[j].d;
+  $('narrow').textContent=arrow(nxt.m);$('ndist').textContent=fmtD(dn);$('ntext').textContent=txt(nxt);
+  $('eta').textContent=Math.max(1,Math.round(NAV.dur*Math.min(1,rem/NAV.dist)/60))+' min · '+fmtD(rem);
+  const far=spd>70?500:spd>40?250:120;
+  if(dn<far&&dn>=60&&!NAV.said[i+'f']){NAV.said[i+'f']=1;speak('Dans '+(dn>=1000?(dn/1000).toFixed(1).replace('.',',')+' kilomètre':Math.round(dn/50)*50+' mètres')+', '+txt(nxt))}
+  if(dn<60&&!NAV.said[i+'n']){NAV.said[i+'n']=1;speak(txt(nxt))}
+}
+async function searchDest(){
+  const q=$('dq').value.trim();if(!q)return;
+  $('dmsg').textContent='Recherche…';$('dres').innerHTML='';
+  const c=CUR||DEMO_O;
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/search?'+new URLSearchParams({q,format:'json',limit:'5','accept-language':'fr',viewbox:(c.lon-0.6)+','+(c.lat+0.4)+','+(c.lon+0.6)+','+(c.lat-0.4)}));
+    const j=await r.json();
+    if(!j.length){$('dmsg').textContent='Aucun résultat.';return}
+    $('dmsg').textContent='';
+    j.forEach(x=>{const b=document.createElement('button');b.className='btn res';b.textContent=x.display_name;b.onclick=()=>{unlockVoice();startNav({lat:+x.lat,lon:+x.lon,name:x.display_name})};$('dres').appendChild(b)});
+  }catch(e){$('dmsg').textContent='Recherche impossible (réseau).'}
+}
+$('dest').onclick=()=>$('dpanel').classList.add('on');
+$('dclose').onclick=()=>$('dpanel').classList.remove('on');
+$('dgo').onclick=searchDest;
+$('dq').addEventListener('keydown',e=>{if(e.key==='Enter')searchDest()});
+$('stopnav').onclick=clearNav;
+$('voice').onclick=()=>{voiceOn=!voiceOn;$('voice').textContent=voiceOn?'🔊':'🔇';if(!voiceOn)try{speechSynthesis.cancel()}catch(e){}else{unlockVoice();speak('Voix activée')}};
+
+/* ---------- Fond animé selon la pochette ---------- */
+const BG={key:'',blobs:Array.from(document.querySelectorAll('#bg i'))};
+function hashHue(str){let x=0;for(const c of str)x=(x*31+c.charCodeAt(0))%360;return x}
+function paletteFromHue(h){return['hsl('+h+' 85% 50%)','hsl('+((h+40)%360)+' 80% 42%)','hsl('+((h+300)%360)+' 70% 35%)']}
+function applyPalette(cols){BG.blobs.forEach((b,i)=>{b.style.backgroundColor=cols[i%cols.length]})}
+function paletteFromPixels(d){
+  const buckets={};
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i],g=d[i+1],b=d[i+2],mx=Math.max(r,g,b),mn=Math.min(r,g,b),sat=mx?(mx-mn)/mx:0,val=mx/255;
+    if(val<.2)continue;
+    const key=(r>>5)+','+(g>>5)+','+(b>>5),w=sat*sat+.05,o=buckets[key]||(buckets[key]={w:0,r:0,g:0,b:0});
+    o.w+=w;o.r+=r*w;o.g+=g*w;o.b+=b*w;
+  }
+  const list=Object.values(buckets).sort((a,b)=>b.w-a.w).map(o=>[Math.round(o.r/o.w),Math.round(o.g/o.w),Math.round(o.b/o.w)]);
+  const dist=(a,b)=>Math.hypot(a[0]-b[0],a[1]-b[1],a[2]-b[2]),out=[];
+  for(const c of list){if(out.every(o=>dist(o,c)>70))out.push(c);if(out.length===3)break}
+  while(out.length&&out.length<3)out.push(out[out.length-1]);
+  return out.map(c=>'rgb('+c[0]+','+c[1]+','+c[2]+')');
+}
+function paletteFromImage(url){
+  return new Promise((resolve,reject)=>{
+    const im=new Image();im.crossOrigin='anonymous';
+    im.onload=()=>{try{const c=document.createElement('canvas');c.width=c.height=32;const x=c.getContext('2d');x.drawImage(im,0,0,32,32);
+      const p=paletteFromPixels(x.getImageData(0,0,32,32).data);p.length?resolve(p):reject(new Error('palette vide'))}catch(e){reject(e)}};
+    im.onerror=()=>reject(new Error('image'));im.src=url;
+  });
+}
+async function refreshBackground(){
+  const t=SP.track,key=t?(t.title+'|'+t.artist+'|'+(t.img||'')):'none';
+  if(key===BG.key)return;BG.key=key;
+  if(!t){applyPalette(paletteFromHue(220));return}
+  if(t.img){try{const p=await paletteFromImage(t.img);if(BG.key===key)applyPalette(p);return}catch(e){}}
+  applyPalette(paletteFromHue(t.hue!=null?t.hue:hashHue(t.title+t.artist)));
+}
+
+/* ---------- Mode son seul ---------- */
+let audioOn=false,limitAlerted=false;
+function setAudioMode(on){
+  audioOn=on;$('aud').classList.toggle('on',on);
+  $('mAudio').classList.toggle('on',on);
+  if(on){voiceOn=true;$('voice').textContent='🔊';unlockVoice();speak('Mode son seul activé.');$('panel').classList.remove('on')}
+}
+function updateAudioHud(){
+  $('as').textContent=Math.round(shown);
+  $('al').textContent=limit?'Limite '+limit:'';
+  $('an').textContent=NAV.on?($('ndist').textContent+' · '+$('ntext').textContent):'';
+  if(audioOn){
+    if(over&&!limitAlerted){limitAlerted=true;speak('Attention, tu dépasses la limite.')}
+    if(!over)limitAlerted=false;
+  }
+}
+setInterval(updateAudioHud,500);
 
 /* ---------- Spotify : état commun ---------- */
 const SP={track:null,playing:false,pos:0,dur:1,live:false};
-function renderSP(){
+function renderSP(){renderSPView();refreshBackground()}
+function renderSPView(){
   const c=$('cover');
   if(!SP.track){$('title').textContent='Rien en lecture';$('artist').textContent=SP.live?'Lance un morceau dans Spotify':'Connecte Spotify dans Réglages';$('play').textContent='▶';c.style.background='#1a2547';c.classList.remove('play');return}
   $('title').textContent=SP.track.title;$('artist').textContent=SP.track.artist;
@@ -215,25 +400,33 @@ function demoNext(){demoTrack(di+1)}
 function startDemo(){
   stopAll();mode='demo';SP.live=false;SP.playing=true;demoTrack(0);
   $('gdot').className='dot';$('gtxt').textContent='Mode démo';
-  trail.length=0;let t0=performance.now(),ph=0,pe=0,last=t0;
+  clearNav();let t0=performance.now(),tk=0,ph=0,pe=0,last=t0;
   demoT=setInterval(()=>{
     const now=performance.now(),dt=(now-last)/1000;last=now;pe+=dt;
     if(pe>PH[ph].d){pe=0;ph=(ph+1)%PH.length}
     const p=PH[ph];target=Math.max(0,p.v+Math.sin(now/700)*2);
     if(limit!==p.l)setLimit(p.l,p.n);
-    dh+=Math.sin(now/5000)*dt*30+dt*8;const v=shown/3.6;
-    dx+=Math.sin(dh*Math.PI/180)*v*dt;dy+=Math.cos(dh*Math.PI/180)*v*dt;addPoint(dx,dy);
-    setHeading(((dh%360)+360)%360);
+    const v=shown/3.6;tk++;
+    if(NAV.on&&NAV.cum.length>1){
+      NAV.demoD+=v*dt;const D=Math.min(NAV.demoD,NAV.cum[NAV.cum.length-1]);let k=1;while(k<NAV.cum.length-1&&NAV.cum[k]<D)k++;
+      const a=NAV.coords[k-1],b=NAV.coords[k],seg=(NAV.cum[k]-NAV.cum[k-1])||1,t=(D-NAV.cum[k-1])/seg;
+      const h=(Math.atan2((b.lon-a.lon)*Math.cos(a.lat*Math.PI/180),b.lat-a.lat)*180/Math.PI+360)%360;
+      setHeading(h);if(tk%5===0)onPos(a.lat+(b.lat-a.lat)*t,a.lon+(b.lon-a.lon)*t,shown,h);
+    }else{
+      dh+=Math.sin(now/5000)*dt*30+dt*8;
+      dx+=Math.sin(dh*Math.PI/180)*v*dt;dy+=Math.cos(dh*Math.PI/180)*v*dt;
+      const hh=((dh%360)+360)%360;setHeading(hh);
+      if(tk%5===0)onPos(DEMO_O.lat+dy/111320,DEMO_O.lon+dx/(111320*Math.cos(DEMO_O.lat*Math.PI/180)),shown,hh);
+    }
   },100);
 }
 
 /* ---------- Mode réel ---------- */
 let watchId=null,lastPos=null,lastQ=null,lastQT=0,wake=null;
 function stopAll(){clearInterval(demoT);if(watchId!=null)navigator.geolocation.unwatchPosition(watchId);watchId=null;clearInterval(spPoll);spPoll=null}
-const R_EARTH=6371000,toXY=(lat,lon,o)=>[(lon-o.lon)*Math.PI/180*R_EARTH*Math.cos(o.lat*Math.PI/180),(lat-o.lat)*Math.PI/180*R_EARTH];
-let origin=null;
+const R_EARTH=6371000;
 async function startLive(){
-  stopAll();mode='live';trail.length=0;setLimit(null);target=0;
+  stopAll();mode='live';clearNav();setLimit(null);target=0;
   SP.live=true;SP.track=null;SP.playing=false;renderSP();
   if(!navigator.geolocation){$('msg').textContent='GPS indisponible ici.';return}
   $('gdot').className='dot';$('gtxt').textContent='GPS : recherche…';
@@ -244,8 +437,7 @@ async function startLive(){
     if(v==null&&lastPos){const dt=(p.timestamp-lastPos.timestamp)/1000;if(dt>0){const d=hav(lastPos.coords,c);v=d/dt*3.6}}
     target=v!=null?(v<2?0:v):0;lastPos=p;
     if(c.heading!=null&&!isNaN(c.heading)&&target>3)setHeading(c.heading);
-    if(!origin)origin={lat:c.latitude,lon:c.longitude};
-    const[x,y]=toXY(c.latitude,c.longitude,origin);addPoint(x,y);
+    onPos(c.latitude,c.longitude,target,(c.heading!=null&&!isNaN(c.heading)&&target>3)?c.heading:null);
     fetchLimit(c.latitude,c.longitude);
   },e=>{$('gdot').className='dot';$('gtxt').textContent='GPS : refusé ou indisponible';$('msg').textContent='Erreur GPS : '+e.message},{enableHighAccuracy:true,maximumAge:1000,timeout:15000});
   if(store.get('sp_token'))startSpotifyPoll();
@@ -323,12 +515,14 @@ $('gear').onclick=()=>$('panel').classList.add('on');
 $('close').onclick=()=>$('panel').classList.remove('on');
 $('mDemo').onclick=()=>{$('mDemo').classList.add('on');$('mLive').classList.remove('on');startDemo();$('msg').textContent=''};
 $('mLive').onclick=()=>{$('mLive').classList.add('on');$('mDemo').classList.remove('on');startLive();$('msg').textContent='Autorise la localisation quand Safari te le demande.'};
+$('mAudio').onclick=()=>setAudioMode(!audioOn);
+$('aud').onclick=()=>setAudioMode(false);
 $('mHud').onclick=e=>{$('app').classList.toggle('hud');e.target.classList.toggle('on')};
 $('spConn').onclick=spLogin;
 $('spOff').onclick=()=>{['sp_token','sp_refresh','sp_exp','sp_v'].forEach(store.del);clearInterval(spPoll);SP.track=null;renderSP();$('msg').textContent='Spotify déconnecté.'};
 $('cid').value=store.get('sp_cid')||'';
 
-requestAnimationFrame(drawGauge);requestAnimationFrame(drawMap);
+requestAnimationFrame(drawGauge);
 handleRedirect().then(ok=>{if(ok){$('mLive').click();$('msg').textContent='Spotify connecté.'}else startDemo()});
 })();
 </script>
